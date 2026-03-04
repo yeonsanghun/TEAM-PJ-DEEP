@@ -1,6 +1,7 @@
 import requests
-import streamlit as st
 from PIL import Image
+
+import streamlit as st
 
 # ── 페이지 설정 ──────────────────────────────────────────────
 st.set_page_config(
@@ -47,7 +48,7 @@ if uploaded:
                     st.error(f"서버 에러: {data['error']}")
                 else:
                     name = data.get("result", "알 수 없음")
-                    idx  = data.get("index", -1)
+                    idx = data.get("index", -1)
                     fname = data.get("filename", "")
 
                     emoji = CLASS_EMOJI[idx] if 0 <= idx < len(CLASS_EMOJI) else "❓"
