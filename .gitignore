@@ -1,0 +1,81 @@
+# =========================
+# Python virtual environment
+# =========================
+.venv/
+venv/
+env/
+
+# =========================
+# Python cache / compiled files
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# =========================
+# Jupyter
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# Test / lint / type checker caches
+# =========================
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# =========================
+# Coverage
+# =========================
+.coverage
+.coverage.*
+htmlcov/
+
+# =========================
+# Build / packaging
+# =========================
+build/
+dist/
+.eggs/
+*.egg-info/
+pip-wheel-metadata/
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# Environment / secrets
+# =========================
+.env
+.env.*
+*.env
+
+# =========================
+# IDE / Editor
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Optional: local data / model outputs
+# 필요하면 주석 해제해서 사용
+# =========================
+# data/
+# outputs/
+# artifacts/
+# checkpoints/
+# *.ckpt
+# *.pt
+# *.pth
+# *.onnx
+# *.pkl
