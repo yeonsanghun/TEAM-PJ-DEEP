@@ -1,10 +1,15 @@
 import os
+import sys
 
 import whisper
 
+if len(sys.argv) < 2:
+    print("Usage: python whisper_main.py <audio_filename>")
+    sys.exit(1)
+
 model = whisper.load_model("turbo")
 input_audio_dir = "audio"
-input_audio_file = "Leejamsample.mp3"
+input_audio_file = sys.argv[1]
 input_audio = whisper.load_audio(os.path.join(input_audio_dir, input_audio_file))
 input_audio_name = input_audio_file.split("/")[-1]
 
