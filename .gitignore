@@ -81,3 +81,6 @@ Thumbs.db
 # *.pkl
 
 upload_img/
+
+*.pt
+*.pth
