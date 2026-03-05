@@ -82,5 +82,10 @@ Thumbs.db
 
 upload_img/
 
+# =========================
+# Images directories
+# =========================
+**/images/
+
 *.pt
 *.pth

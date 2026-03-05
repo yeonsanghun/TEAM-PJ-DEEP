@@ -41,6 +41,7 @@
 
 import io  # 바이트 데이터를 파일처럼 다루기 위한 표준 라이브러리
 import os  # 파일 경로 처리, 디렉토리 조작을 위한 표준 라이브러리
+import tempfile  # 임시 파일 생성
 import uuid  # 업로드 파일에 고유한 이름을 부여하기 위한 라이브러리
 from contextlib import asynccontextmanager  # 비동기 컨텍스트 매니저 데코레이터
 
@@ -48,6 +49,7 @@ import torch  # PyTorch 메인 라이브러리
 import torch.nn as nn  # 신경망 레이어 정의 (Linear 등)
 import torchvision.models as models  # 사전 학습된 모델 불러오기 (ResNet 등)
 import torchvision.transforms as transforms  # 이미지 전처리 파이프라인
+import whisper  # OpenAI Whisper STT 모델
 from PIL import Image  # 이미지 열기 및 변환을 위한 Pillow 라이브러리
 
 from fastapi import (  # FastAPI 웹 프레임워크 및 파일 업로드 관련 클래스
@@ -125,6 +127,11 @@ async def lifespan(app: FastAPI):
     # 전역 변수 대신 app.state에 저장 → request.app.state.model 로 접근
     app.state.model = _model
     print("========== 모델 불러오기 끝!!! ==============")
+
+    # Whisper STT 모델 로드
+    print("========== Whisper 모델 불러오기 시작 ===========")
+    app.state.whisper_model = whisper.load_model("turbo")
+    print("========== Whisper 모델 불러오기 끝!!! ==========")
 
     yield  # ← 이 지점에서 실제 서버가 요청을 처리하기 시작합니다.
 
@@ -346,6 +353,37 @@ async def face_infer(
 
     # Step 8: 클래스 인덱스 + 파일명 → 최종 JSON 응답 생성
     return make_response(result, newfile_name)
+
+
+# ============================================================
+# ## 라우터 정의 (3) — POST /stt  음성 파일 → 텍스트 변환
+#
+# 클라이언트가 mp3 등 오디오 파일을 업로드하면 Whisper 모델로 전사(transcription)하여
+# 텍스트를 JSON으로 반환합니다.
+#
+# 요청 형식: multipart/form-data  (file 필드에 오디오 파일 첨부)
+# 응답 형식: JSON { filename, text }
+# ============================================================
+@app.post("/stt")
+async def stt(request: Request, file: UploadFile = File(...)):
+    allowed_ext = ["mp3", "wav", "m4a", "ogg", "flac", "webm"]
+    ext = file.filename.split(".")[-1].lower()
+    if ext not in allowed_ext:
+        return {"error": f"지원하지 않는 형식입니다: .{ext}"}
+
+    audio_bytes = await file.read()
+
+    # 업로드된 바이트를 임시 파일로 저장 후 Whisper에 전달
+    with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+        tmp.write(audio_bytes)
+        tmp_path = tmp.name
+
+    try:
+        result = request.app.state.whisper_model.transcribe(tmp_path)
+    finally:
+        os.remove(tmp_path)
+
+    return {"filename": file.filename, "text": result["text"]}
 
 
 # ============================================================
