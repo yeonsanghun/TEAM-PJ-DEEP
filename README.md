@@ -1,5 +1,6 @@
 fastapi 실행
-cd c:\team2\TEAM-PJ-DEEP\fastapi ; ..\\.venv\Scripts\uvicorn.exe fastapi_main:app --reload --host 127.0.0.1 --port 7394
+cd fastapi
+..\\.venv\Scripts\uvicorn.exe fastapi_main:app --reload --host 127.0.0.1 --port 7394
 
 swagger
 http://localhost:7394/docs
