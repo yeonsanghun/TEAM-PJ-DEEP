@@ -48,6 +48,12 @@ pip-wheel-metadata/
 *.log
 
 # =========================
+# Images (generated outputs)
+# =========================
+*.png
+**/*.png
+
+# =========================
 # Environment / secrets
 # =========================
 .env
@@ -85,3 +91,17 @@ runs
 
 /document_forms_data/**
 /document_forms_source/runs/readme.md
+
+upload_img/
+
+# =========================
+# Images directories
+# =========================
+**/images/
+
+*.pt
+*.pth
+
+data2/
+data3/
+
