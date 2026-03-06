@@ -73,7 +73,7 @@ Thumbs.db
 # data/
 # outputs/
 # artifacts/
-# checkpoints/
+checkpoints/
 # *.ckpt
 # *.pt
 *.pth
@@ -82,3 +82,6 @@ Thumbs.db
 별지_제1호서식_확정일자_신청서
 별지_제1호서식_확정일자_신청서.zip
 runs
+
+/document_forms_data/**
+/document_forms_source/runs/readme.md

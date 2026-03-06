@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "grad-cam>=1.5.5",
     "matplotlib>=3.10.8",
     "numpy>=2.4.2",
     "openpyxl>=3.1.5",
