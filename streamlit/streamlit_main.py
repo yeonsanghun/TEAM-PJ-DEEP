@@ -514,13 +514,13 @@ AGENCY_ICONS = {
 }
 
 # 필요 서류 기본 템플릿
-REQUIRED_DOCS_TEMPLATE = {
-    "여권신청서": False,
-    "운전면허증": False,
-    "전입신고서": False,
-    "확정일자": False,
-    "주민등록증": False
-}
+REQUIRED_DOCS_TEMPLATE = [
+    "여권신청서",
+    "운전면허증",
+    "전입신고서",
+    "확정일자",
+    "주민등록증"
+]
 
 # 필수 문서 요소 모델 불러오기
 def load_required_docs_model():
@@ -692,46 +692,51 @@ def main():
                             <div class="document-title">{doc}</div>
                         </div>
                     </div>
+                    <div class="document-prob-badge">{prob:.0%}</div>
                 </div>
-            </div>
+                <div class="document-content">
+                    <div class="upload-section">
+                        <div class="upload-label">
             """, unsafe_allow_html=True)
             
-            # 업로드와 상태를 두 칼럼으로 배치
-            col_up, col_status = st.columns([1, 1])
+            # 파일 업로드
+            uploaded_file = st.file_uploader(
+                f"파일 선택 ({doc})",
+                type=["jpg", "jpeg", "png", "pdf"],
+                key=doc_key,
+                label_visibility="collapsed"
+            )
+
+            st.markdown("</div>", unsafe_allow_html=True)
             
-            with col_up:
-                uploaded_file = st.file_uploader(
-                    f"파일 선택 ({doc})",
-                    type=["jpg", "jpeg", "png", "pdf"],
-                    key=doc_key,
-                    label_visibility="collapsed"
-                )
+            # 파일 업로드 시 세션 상태에 저장
+            if uploaded_file:
+                st.session_state.uploaded_docs[doc_key] = uploaded_file
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # 검증 상태 표시
+            st.markdown('<div class="status-section">', unsafe_allow_html=True)
+            if doc_key in st.session_state.uploaded_docs:
+                uploaded_file = st.session_state.uploaded_docs[doc_key]
+                file_name = uploaded_file.name
+                is_valid = uploaded_file.size > 0
+                status_icon = "✅" if is_valid else "❌"
+                status_text = "정상" if is_valid else "미흡"
+                status_class = "success" if is_valid else "fail"
                 
-                # 파일 업로드 시 세션 상태에 저장
-                if uploaded_file:
-                    st.session_state.uploaded_docs[doc_key] = uploaded_file
-            
-            with col_status:
-                # 검증 상태 표시
-                if doc_key in st.session_state.uploaded_docs:
-                    uploaded_file = st.session_state.uploaded_docs[doc_key]
-                    file_name = uploaded_file.name
-                    is_valid = uploaded_file.size > 0
-                    status_icon = "✅" if is_valid else "❌"
-                    status_text = "정상" if is_valid else "미흡"
-                    status_class = "success" if is_valid else "fail"
-                    
-                    st.markdown(f"""
-                    <div style="padding: 1em; border-radius: 0.6em; background: #f8f9fa;">
-                        <div style="color: #666; font-size: 0.85em; margin-bottom: 0.5em; word-break: break-word;">📁 {file_name}</div>
+                st.markdown(f"""
+                    <div class="status-item">
+                        <div class="file-name">📁 {file_name}</div>
                         <div class="status-badge {status_class}">{status_icon} {status_text}</div>
                     </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.markdown("""
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
                     <div class="status-empty">📁 파일을 선택하면<br/>검증 결과가 표시됩니다</div>
-                    """, unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
             
+            st.markdown('</div></div></div>', unsafe_allow_html=True)
             st.markdown("<hr style='margin: 1.5em 0; border: none; border-top: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
     else:
         st.markdown('<div class="empty-state">📋 민원 내용을 먼저 분석해주세요</div>', unsafe_allow_html=True)
