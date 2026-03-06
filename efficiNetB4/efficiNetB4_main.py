@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from PIL import Image
-from pytorch_grad_cam import GradCAM, GradCAMPlusPlus
+from pytorch_grad_cam import GradCAMPlusPlus
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from torch.utils.data import DataLoader, Dataset
@@ -286,48 +286,43 @@ print(f"Test Element-wise Accuracy: {acc:.4f}")
 # =====================================================================
 # Phase 5 — GradCAM 시각화
 # =====================================================================
+def visualize_gradcam_pp(model, img_pil, filename, save_path="gradcam_result.png"):
+    """GradCAM++ 히트맵을 생성하고 저장한다."""
+    for param in model.parameters():
+        param.requires_grad = True
+
+    input_tensor = transform_val(img_pil).unsqueeze(0).to(device)
+
+    pred = model(input_tensor)
+    pred_class = torch.sigmoid(pred).argmax().item()
+
+    target_layers = [model.features[-1]]
+    targets = [ClassifierOutputTarget(pred_class)]
+
+    cam_pp = GradCAMPlusPlus(model=model, target_layers=target_layers)
+    gradcam_pp_map = cam_pp(input_tensor=input_tensor, targets=targets)[0]
+
+    rgb_img = np.array(img_pil.resize((224, 224))).astype(np.float32) / 255.0
+    vis_pp = show_cam_on_image(rgb_img, gradcam_pp_map, use_rgb=True)
+
+    fig, ax = plt.subplots(1, 1, figsize=(7, 7))
+    ax.imshow(vis_pp)
+    ax.set_title(f"GradCAM++ (class {pred_class}: {LABEL_COLS[pred_class]})")
+    ax.axis("off")
+    plt.suptitle(f"File: {filename}", fontsize=10)
+    plt.tight_layout()
+    plt.savefig(save_path)
+    plt.show()
+    print(f"Saved: {save_path}")
+
+
 model.load_state_dict(torch.load(BEST_MODEL_PATH, map_location=device))
 model.eval()
 model.to(device)
-
-# GradCAM은 gradient 계산이 필요하므로 requires_grad 활성화
-for param in model.parameters():
-    param.requires_grad = True
 
 # test셋 첫 번째 이미지 자동 선택 (재현성 보장)
 first_row = test_dataset.df.iloc[0]
 img_path = os.path.join(TEST_IMG_DIR, first_row["filename"])
 img_pil = Image.open(img_path).convert("RGB")
 
-input_tensor = transform_val(img_pil).unsqueeze(0).to(device)
-
-pred = model(input_tensor)
-pred_class = torch.sigmoid(pred).argmax().item()
-
-target_layers = [model.features[-1]]
-targets = [ClassifierOutputTarget(pred_class)]
-
-# GradCAM
-cam = GradCAM(model=model, target_layers=target_layers)
-gradcam_map = cam(input_tensor=input_tensor, targets=targets)[0]
-
-# GradCAM++
-cam_pp = GradCAMPlusPlus(model=model, target_layers=target_layers)
-gradcam_pp_map = cam_pp(input_tensor=input_tensor, targets=targets)[0]
-
-rgb_img = np.array(img_pil.resize((224, 224))).astype(np.float32) / 255.0
-vis_cam = show_cam_on_image(rgb_img, gradcam_map, use_rgb=True)
-vis_pp = show_cam_on_image(rgb_img, gradcam_pp_map, use_rgb=True)
-
-fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-axes[0].imshow(vis_cam)
-axes[0].set_title(f"GradCAM   (class {pred_class}: {LABEL_COLS[pred_class]})")
-axes[0].axis("off")
-axes[1].imshow(vis_pp)
-axes[1].set_title(f"GradCAM++ (class {pred_class}: {LABEL_COLS[pred_class]})")
-axes[1].axis("off")
-plt.suptitle(f"File: {first_row['filename']}", fontsize=10)
-plt.tight_layout()
-plt.savefig("gradcam_result.png")
-plt.show()
-print("Saved: gradcam_result.png")
+visualize_gradcam_pp(model, img_pil, first_row["filename"])
