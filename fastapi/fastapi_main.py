@@ -7,13 +7,14 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import JSONResponse
 from PIL import Image
 from pytorch_grad_cam import GradCAMPlusPlus
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from torchvision import models
+
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import JSONResponse
 
 # =====================================================================
 # Config
@@ -120,7 +121,7 @@ def run_inference(image: Image.Image):
 # =====================================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    get_model()   # 서버 시작 시 모델 사전 로드
+    get_model()  # 서버 시작 시 모델 사전 로드
     yield
 
 
@@ -146,7 +147,9 @@ async def predict(file: UploadFile = File(...)):
     try:
         image = Image.open(io.BytesIO(contents)).convert("RGB")
     except Exception:
-        return JSONResponse(status_code=400, content={"error": "이미지를 열 수 없습니다."})
+        return JSONResponse(
+            status_code=400, content={"error": "이미지를 열 수 없습니다."}
+        )
 
     result = run_inference(image)
     return JSONResponse(content=result)

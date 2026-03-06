@@ -2,8 +2,9 @@ import base64
 import io
 
 import requests
-import streamlit as st
 from PIL import Image
+
+import streamlit as st
 
 # =====================================================================
 # Config
@@ -16,7 +17,9 @@ PREDICT_URL = f"{API_BASE}/efficiNetB4"
 # =====================================================================
 st.set_page_config(page_title="전입신고서 분석", layout="wide")
 st.title("📋 전입신고서 필드 분석")
-st.caption("EfficientNet-B4 모델이 전입신고서 이미지를 분석하여 14개 필드의 기입 여부를 판별합니다.")
+st.caption(
+    "EfficientNet-B4 모델이 전입신고서 이미지를 분석하여 14개 필드의 기입 여부를 판별합니다."
+)
 
 # ── API 서버 상태 확인 ──────────────────────────────────────────────
 with st.sidebar:
@@ -49,13 +52,17 @@ if uploaded_file is not None:
         try:
             resp = requests.post(
                 predict_url,
-                files={"file": (uploaded_file.name, uploaded_file.read(), "image/jpeg")},
+                files={
+                    "file": (uploaded_file.name, uploaded_file.read(), "image/jpeg")
+                },
                 timeout=60,
             )
             resp.raise_for_status()
             data = resp.json()
         except requests.exceptions.ConnectionError:
-            st.error("❌ API 서버에 연결할 수 없습니다. FastAPI 서버가 실행 중인지 확인하세요.")
+            st.error(
+                "❌ API 서버에 연결할 수 없습니다. FastAPI 서버가 실행 중인지 확인하세요."
+            )
             st.stop()
         except Exception as e:
             st.error(f"❌ 오류 발생: {e}")
@@ -74,14 +81,18 @@ if uploaded_file is not None:
     # ── 좌측: 원본 이미지 + GradCAM ────────────────────────────────
     with col1:
         st.image(image, caption="업로드한 이미지", use_container_width=True)
-        st.image(gradcam_img, caption=f"GradCAM++ 히트맵 (주목 클래스: {pred_class_name})", use_container_width=True)
+        st.image(
+            gradcam_img,
+            caption=f"GradCAM++ 히트맵 (주목 클래스: {pred_class_name})",
+            use_container_width=True,
+        )
 
     # ── 우측: 예측 결과 ─────────────────────────────────────────────
     with col2:
         st.subheader("예측 결과")
 
         filled = [r for r in predictions if r["pred"]]
-        empty  = [r for r in predictions if not r["pred"]]
+        empty = [r for r in predictions if not r["pred"]]
 
         st.markdown("**✅ 기입된 필드**")
         if filled:
