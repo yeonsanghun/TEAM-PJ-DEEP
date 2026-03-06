@@ -89,3 +89,5 @@ upload_img/
 
 *.pt
 *.pth
+
+data2/

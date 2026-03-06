@@ -2,6 +2,19 @@
 # 멀티레이블 분류 - CNN (VGG16)
 # Notion 참고: 멀티레이블분류-CNN
 #
+# ── ImageNet 이란? ──────────────────────────────────────────
+# ImageNet은 스탠퍼드 대학교의 Fei-Fei Li 교수팀이 구축한
+# 대규모 이미지 데이터셋입니다.
+#
+#   - 규모    : 약 1,400만 장 이미지 / 21,841개 카테고리
+#   - 대회    : ILSVRC (ImageNet Large Scale Visual Recognition Challenge)
+#               → 매년 1,000개 클래스, 약 120만 장으로 경쟁
+#   - 의의    : AlexNet(2012), VGG(2014), ResNet(2015) 등
+#               딥러닝 혁신 모델들이 이 대회를 통해 등장
+#   - 전이학습: ImageNet으로 사전학습된 가중치를 다른 도메인에
+#               재사용(fine-tuning)하면 적은 데이터로도 높은 성능 달성
+#               → 이 코드에서도 VGG16의 ImageNet 가중치를 활용
+#
 # 전체 흐름:
 #   1. 정답 데이터셋 형태 (image_path + 라벨 벡터 CSV)
 #   2. 폴더 구조: dataset/images/ + labels.csv
@@ -87,13 +100,53 @@ def build_model(num_classes: int, device: str) -> nn.Module:
 # VGG16은 ImageNet으로 사전 학습 → 동일한 mean/std로 정규화
 # ============================================================
 def get_transform() -> transforms.Compose:
+    """
+    VGG16 입력에 맞는 이미지 전처리 파이프라인을 반환합니다.
+
+    반환값:
+        transforms.Compose: 순서대로 적용되는 변환 파이프라인
+
+    변환 순서:
+        1. Resize(224, 224)  → VGG16은 224×224 고정 입력을 기대함
+        2. ToTensor()        → PIL Image(H×W×C, 0~255) → Tensor(C×H×W, 0.0~1.0)
+        3. Normalize(...)    → ImageNet 사전학습 통계값으로 정규화
+                               각 채널별 (pixel - mean) / std 수행
+                               mean/std는 ImageNet 전체 데이터셋 기준 값:
+                                 R 채널: mean=0.485, std=0.229
+                                 G 채널: mean=0.456, std=0.224
+                                 B 채널: mean=0.406, std=0.225
+                               → 사전학습 조건과 동일하게 맞춰야 전이학습 효과 극대화
+
+    ImageNet 정규화 값 출처:
+        - ImageNet ILSVRC 학습셋(약 120만 장)의 모든 픽셀을 채널별로
+          집계해 계산한 통계값입니다.
+        - VGG16 모델은 이 통계 환경에서 학습됐기 때문에, 추론·파인튜닝 시
+          동일한 mean/std로 정규화해야 특징 추출기(feature extractor)가
+          올바르게 동작합니다.
+        - 다른 모델(ResNet, EfficientNet 등)도 ImageNet 사전학습이라면
+          동일한 값을 사용하는 것이 일반적입니다.
+
+    주의:
+        - Normalize는 반드시 ToTensor() 이후에 적용해야 함
+          (ToTensor가 먼저 값 범위를 0~1로 변환하기 때문)
+        - VGG16 외 다른 모델 사용 시 mean/std 값이 달라질 수 있음
+    """
     return transforms.Compose(
         [
+            # 1단계: 이미지 크기를 VGG16 입력 크기(224×224)로 리사이즈
+            #        - 원본 비율 무시하고 강제 리사이즈 (비율 유지 필요 시 CenterCrop 조합 사용)
             transforms.Resize((224, 224)),
+            # 2단계: PIL Image → PyTorch Tensor 변환
+            #        - 픽셀 값 범위: [0, 255] → [0.0, 1.0] (자동 스케일)
+            #        - 차원 순서:  (H, W, C) → (C, H, W)
             transforms.ToTensor(),
+            # 3단계: ImageNet 통계값 기반 정규화
+            #        - 공식: output = (input - mean) / std  (채널별 독립 적용)
+            #        - mean/std는 ImageNet 120만 장 이미지에서 계산된 고정값
+            #        - VGG16이 이 통계값 환경에서 학습됐으므로 동일하게 맞춰야 함
             transforms.Normalize(
-                mean=[0.485, 0.456, 0.406],
-                std=[0.229, 0.224, 0.225],
+                mean=[0.485, 0.456, 0.406],  # RGB 각 채널 평균
+                std=[0.229, 0.224, 0.225],  # RGB 각 채널 표준편차
             ),
         ]
     )
@@ -245,7 +298,7 @@ def main():
     # ── 설정 ────────────────────────────────────────────────
     NUM_CLASSES = 7
     CLASS_NAMES = ["A", "B", "C", "D", "E", "F", "G"]
-    EPOCHS = 3  # 테스트용 (실제 학습 시 10 이상 권장)
+    EPOCHS = 10  # 테스트용 (실제 학습 시 10 이상 권장)
     BATCH_SIZE = 8
     LR = 1e-4
     THRESHOLD = 0.5
@@ -266,7 +319,7 @@ def main():
         print("\n실제 데이터셋 없음 → 더미 데이터 자동 생성")
         IMG_DIR, CSV_PATH = create_dummy_dataset(
             dataset_dir=DATASET_DIR,
-            num_images=40,
+            num_images=1000,
             num_classes=NUM_CLASSES,
             class_names=CLASS_NAMES,
         )
