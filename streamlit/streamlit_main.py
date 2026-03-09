@@ -1,15 +1,14 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import torch
-import torch.nn as nn
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import json
 import os
 from pathlib import Path
-from PIL import Image
 import io
-from torchvision import models, transforms
+import requests
+
+# FastAPI 서버 URL
+API_BASE_URL = "http://localhost:8000"
 
 # 페이지 설정
 st.set_page_config(
@@ -371,64 +370,26 @@ MODEL_DIR = PROJECT_ROOT / "best_model"
 if "predictions" not in st.session_state:
     st.session_state.predictions = None
 
-# 모델 및 토크나이저 캐시
-@st.cache_resource
-def load_model_and_tokenizer():
-    """모델과 토크나이저 로드"""    
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # 토크나이저 로드
-    tokenizer = AutoTokenizer.from_pretrained("klue/roberta-base")
-    
-    # 라벨 로드
-    with open(DATA_DIR / "multilabel_classes.json", "r", encoding="utf-8") as f:
-        label_cols = json.load(f)
-    
-    # 모델 로드
-    model = AutoModelForSequenceClassification.from_pretrained(
-        "klue/roberta-base",
-        num_labels=len(label_cols),
-        problem_type="multi_label_classification"
-    )
-    
-    # 저장된 가중치 로드
-    model_path = MODEL_DIR / "multiLabel_best_model.pt"
-    if model_path.exists():
-        model.load_state_dict(torch.load(model_path, map_location=device, weights_only=False))
-    
-    model.to(device)
-    model.eval()
-    
-    return model, tokenizer, label_cols, device
-
 # 민원 분류 함수
-def classify_complaint(text, model, tokenizer, label_cols, device, threshold=0.4):
-    """민원 텍스트 분류"""
-    encoding = tokenizer(
-        text,
-        truncation=True,
-        padding="max_length",
-        max_length=128,
-        return_tensors="pt"
-    )
-    
-    input_ids = encoding["input_ids"].to(device)
-    attention_mask = encoding["attention_mask"].to(device)
-    
-    with torch.no_grad():
-        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
-        logits = outputs.logits
-        probs = torch.sigmoid(logits).squeeze(0).cpu().numpy()
-    
-    # 예측 결과 추출
-    predictions = []
-    for col, prob in zip(label_cols, probs):
-        if prob >= threshold:
-            predictions.append((col, float(prob)))
-    
-    predictions = sorted(predictions, key=lambda x: x[1], reverse=True)
-    return predictions
+def classify_complaint(text):
+    """민원 텍스트 분류 - FastAPI 서버 호출"""
+    try:
+        response = requests.post(
+            f"{API_BASE_URL}/classify",
+            json={"text": text}
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        # API 응답을 기존 형식으로 변환
+        predictions = []
+        for pred in data.get("predictions", []):
+            predictions.append((pred[0], pred[1]))
+        
+        return predictions
+    except Exception as e:
+        st.error(f"API 호출 실패: {str(e)}")
+        return []
 
 # 라벨에서 기관과 문서 분류
 def categorize_labels(predictions):
@@ -515,36 +476,32 @@ AGENCY_ICONS = {
 
 # 필요 서류 기본 템플릿
 REQUIRED_DOCS_TEMPLATE = [
+    "여권",
     "여권신청서",
     "운전면허증",
+    "임대차계약서",
     "전입신고서",
-    "확정일자",
-    "주민등록증"
+    "주민등록등본",
+    "주민등록증",
+    "확정일자신청서",
 ]
 
-# 필수 문서 요소 모델 불러오기
-def load_required_docs_model():
-    """필수 문서 요소 모델 로드"""    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # 모델 로드
-    model = models.efficientnet_b0(pretrained=True)
-    model.classifier[1] = nn.Linear(1280,5) 
-
-    model.load_state_dict(torch.load(MODEL_DIR / "document_best_model.pt", map_location=device, weights_only=False))      
-
-    transform_test = transforms.Compose(
-        [
-            transforms.Resize((224,224)),
-            transforms.ToTensor(),
-            transforms.Normalize([0.485,0.456,0.406],[0.229,0.224,0.225])
-        ]
-    )
-
-    model.to(device)
-    model.eval()
-
-    return model, transform_test, device
+# 문서 분류 함수
+def classify_document(img_bytes, filename):
+    """문서 이미지를 분류 - FastAPI 서버 호출"""
+    try:
+        files = {"file": (filename, io.BytesIO(img_bytes), "image/jpeg")}
+        response = requests.post(
+            f"{API_BASE_URL}/classify-document",
+            files=files
+        )
+        response.raise_for_status()
+        data = response.json()
+        
+        return data.get("document_class"), data.get("confidence", 0.0)
+    except Exception as e:
+        st.error(f"문서 분류 API 호출 실패: {str(e)}")
+        return None, 0.0
 
 
 
@@ -555,14 +512,6 @@ def main():
         '<div class="subtitle">신뢰감 주는 타이틀과 함께 서비스의 정체성을<br/>명확히 전달하는 상담 영역입니다.</div>',
         unsafe_allow_html=True
     )
-    
-    # 모델 로드
-    try:
-        model, tokenizer, label_cols, device = load_model_and_tokenizer()
-        docu_model, transform_test, docu_device = load_required_docs_model()
-    except Exception as e:
-        st.error(f"모델 로드 실패: {str(e)}")
-        return
     
     # 민원 입력 섹션
     st.markdown('<label class="input-label">📝 민원 내용을 자유롭게 입력해주세요</label>', unsafe_allow_html=True)
@@ -579,13 +528,7 @@ def main():
     if analyze_btn:
         if complaint_text.strip():
             with st.spinner("🔄 민원 분석 중..."):
-                st.session_state.predictions = classify_complaint(
-                    complaint_text, 
-                    model, 
-                    tokenizer, 
-                    label_cols, 
-                    device
-                )
+                st.session_state.predictions = classify_complaint(complaint_text)
         else:
             st.warning("민원 내용을 입력해주세요.")
 
@@ -702,7 +645,7 @@ def main():
             # 파일 업로드
             uploaded_file = st.file_uploader(
                 f"파일 선택 ({doc})",
-                type=["jpg", "jpeg", "png", "pdf"],
+                type=["jpg", "jpeg", "png"],
                 key=doc_key,
                 label_visibility="collapsed"
             )
@@ -720,10 +663,29 @@ def main():
             if doc_key in st.session_state.uploaded_docs:
                 uploaded_file = st.session_state.uploaded_docs[doc_key]
                 file_name = uploaded_file.name
-                is_valid = uploaded_file.size > 0
-                status_icon = "✅" if is_valid else "❌"
-                status_text = "정상" if is_valid else "미흡"
-                status_class = "success" if is_valid else "fail"
+                
+                # 파일이 이미지인지 확인
+                if uploaded_file.type in ["image/jpeg", "image/jpg", "image/png"]:
+                    # 이미지 분류
+                    img_bytes = uploaded_file.getvalue()
+                    predicted_class, confidence = classify_document(img_bytes, file_name)
+                    
+                    if predicted_class:
+                        # 분류 결과가 예상 문서와 일치하는지 확인
+                        is_valid = predicted_class == doc
+                        status_icon = "✅" if is_valid else "⚠️"
+                        status_text = f"{predicted_class} ({confidence:.1%})" if is_valid else f"불일치: {predicted_class}"
+                        status_class = "success" if is_valid else "fail"
+                    else:
+                        is_valid = False
+                        status_icon = "❌"
+                        status_text = "분류 실패"
+                        status_class = "fail"
+                else:
+                    is_valid = False
+                    status_icon = "❌"
+                    status_text = "지원되지 않는 형식"
+                    status_class = "fail"
                 
                 st.markdown(f"""
                     <div class="status-item">
