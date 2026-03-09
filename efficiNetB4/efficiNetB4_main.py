@@ -53,7 +53,8 @@ LABEL_COLS = [
     "신청인_서명도장",
 ]
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cuda:1" if torch.cuda.is_available() else "cpu"
+print('device:' + device)
 
 # =====================================================================
 # Phase 1 — Transform 정의

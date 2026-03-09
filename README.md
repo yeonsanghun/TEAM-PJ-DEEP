@@ -1,6 +1,11 @@
 fastapi 실행
 cd fastapi
-..\\.venv\Scripts\uvicorn.exe fastapi_main:app --reload --host 127.0.0.1 --port 7394
+..\\.venv\Scripts\uvicorn.exe fastapi_main:app --reload --host 0.0.0.0 --port 7394
+
+linux
+../.venv/bin/uvicorn fastapi_main:app --host 0.0.0.0 --port 8000
+
+172.16.100.123
 
 swagger
 http://localhost:7394/docs
@@ -28,3 +33,7 @@ cd streamlit
 ..\.venv\Scripts\streamlit.exe run model_tester.py --server.port 8501
 Local URL: http://localhost:8501
 Network URL: http://172.16.20.248:8501
+
+linux
+../.venv/bin/streamlit run model_efficiNetB4.py --server.port 8501
+
