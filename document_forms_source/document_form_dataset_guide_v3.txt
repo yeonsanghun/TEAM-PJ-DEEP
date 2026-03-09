@@ -1,0 +1,188 @@
+ConvNeXt Small을 문서 인식 딥러닝에 사용하는 이유
+
+ConvNeXt Small을 문서 인식 딥러닝에 사용하는 주요 이유는 다음과
+같습니다.
+
+(1) 강력한 이미지 특징 추출 능력
+
+ConvNeXt는 최신 CNN 구조로 문서 이미지의 텍스트 영역, 표, 필드
+위치와 같은 시각적 특징을 효과적으로 추출할 수 있습니다.
+
+(2) Transformer 수준 성능 + CNN 효율성
+
+ConvNeXt는 Vision Transformer(ViT) 의 설계 아이디어를 CNN 구조에
+적용하여 높은 성능을 유지하면서도 연산 효율성이 뛰어납니다.
+
+(3) 문서 이미지와 같은 구조적 패턴에 강함
+
+문서에는 반복적인 레이아웃 구조(칸, 줄, 필드) 가 많이 존재합니다.\
+CNN 기반 모델인 ConvNeXt는 이러한 공간적 패턴(spatial pattern) 을
+효과적으로 학습할 수 있습니다.
+
+(4) 경량 모델이라 학습과 추론이 빠름
+
+ConvNeXt Small은 모델 크기가 적절하여
+
+-   GPU 메모리 사용량이 비교적 적고
+-   학습 속도가 빠르며
+-   실제 서비스 환경에서 추론 속도도 빠릅니다.
+
+(5) 전이학습(Transfer Learning)이 용이
+
+ImageNet으로 사전 학습된(pretrained) 가중치를 활용하면
+
+-   적은 문서 데이터로도
+-   높은 성능의 문서 인식 모델을 학습할 수 있습니다.
+
+
+
+문서 서식 필드 탐지 데이터셋 안내서
+
+Document Form Field Detection Dataset Guide
+
+
+
+1. 데이터셋 개요 (Dataset Overview)
+
+본 데이터셋은 문서 서식 이미지 내에서 항목(필드)의 오기입 또는 누락
+여부를 탐지하는 딥러닝 모델을 학습시키기 위해 설계되었습니다.
+
+전체 파이프라인은 다음 단계를 포함합니다.
+
+-   PDF → 이미지 변환
+-   데이터 라벨링
+-   ConvNeXt 기반 멀티 라벨 분류 학습
+
+
+
+2. 데이터 생성 파이프라인 (Data Generation Pipeline)
+
+Step 1. PDF 이미지 변환
+
+pdf2image 라이브러리를 사용하여 원본 PDF 문서를 이미지로 변환합니다.
+
+변환 설정
+
+-   해상도 (DPI): 300
+-   포맷: JPG
+-   변환 방식: 각 페이지를 개별 이미지 파일로 생성
+
+
+
+3. 라벨 정의 및 인코딩 (Label Definitions)
+
+본 데이터셋은 총 14개의 필드를 탐지 대상으로 하며\
+멀티 라벨 분류 (Multi-label Classification) 방식으로 구성됩니다.
+
+라벨 리스트 (14개 항목)
+
+  ID   필드명                ID   필드명
+  ---- --------------------- ---- -----------------------
+  01   전입자_성명           08   현_연락처
+  02   전입자_주민등록번호   09   현_서명도장
+  03   전입자_연락처         10   현_주소
+  04   전입자_서명도장       11   전입사유_체크
+  05   전_시도               12   우편물서비스_동의체크
+  06   전_시군구             13   신청인_성명
+  07   현_세대주성명         14   신청인_서명도장
+
+인코딩 규칙 (Label Encoding)
+
+각 필드에 대해 이진값(Binary) 을 부여합니다.
+
+  값                의미
+  ----------------- -----------------------------------
+  1 (Correct) 해당 필드가 정상적으로 기입됨
+  0 (Error) 해당 필드가 누락되었거나 오기입됨
+
+
+
+4. 모델 아키텍처 및 학습 설정 (Model & Training)
+
+모델 정보
+
+-   Architecture: ConvNeXt Small\
+-   Input Size: 224 × 224\
+-   Method: Transfer Learning (Pretrained weights 사용)\
+-   Classifier: Linear(768 → 14)
+
+
+
+Loss Function
+
+    BCEWithLogitsLoss
+
+
+
+데이터 증강 (Data Augmentation)
+
+-   Resize (224 × 224)
+-   Random Rotation
+-   Random Affine
+-   Random Perspective
+-   Color Jitter
+
+
+
+Normalization 설정
+
+본 프로젝트에서는 세 번의 실험(학습 회차) 을 진행하였으며, 각
+회차에서 다음과 같은 Normalization 값을 사용하였습니다.
+
+1회차 학습
+
+기존 ImageNet Normalization 사용
+
+    Mean = [0.485, 0.456, 0.406]
+    Std  = [0.229, 0.224, 0.225]
+
+2회차 / 3회차 학습
+
+데이터셋에서 계산한 커스텀 Normalization 사용
+
+    transforms.Normalize(
+        [0.9367, 0.9364, 0.9358],
+        [0.0957, 0.0964, 0.0963]
+    )
+
+
+
+하이퍼파라미터 (Training Settings)
+
+  항목             값
+  ---------------- ----------
+  Batch Size       8
+  Optimizer        Adam
+  Learning Rate    1e-4
+  Epochs           200
+  Early Stopping   3 epochs
+
+
+
+5. 평가 지표 (Evaluation)
+
+모델의 출력값은 Sigmoid 함수를 통해 확률값으로 변환된 후\
+임계치 0.5를 기준으로 최종 예측이 결정됩니다.
+
+예측 로직
+
+    Probability = sigmoid(logits)
+
+    Prediction =
+        1  if Probability > 0.5
+        0  otherwise
+
+주요 성능 지표
+
+-   Accuracy
+-   F1 Score (Micro / Macro / Weighted)
+-   mAP (mean Average Precision)
+
+출력 예시
+
+ python
+print(f"정확도 : {acc:.4f}")
+print(f"F1 micro : {f1_micro:.4f}")
+print(f"F1 macro : {f1_macro:.4f}")
+print(f"F1 weighted : {f1_weighted:.4f}")
+print(f"mAP : {mAP:.4f}")
