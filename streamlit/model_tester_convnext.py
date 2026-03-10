@@ -40,8 +40,8 @@ MODEL_REGISTRY = {
         "mean": [0.9367, 0.9364, 0.9358],
         "std": [0.0957, 0.0964, 0.0963],
     },
-    "ConvNeXt-S (전입신고서 Multi-Label) 3회차(작성해야함)": {
-        "model_path": r"..\document_forms_source\checkpoints\best_model-data2-4000-unfreezed_20260309-val_loss_0.0087.pth",
+    "ConvNeXt-S (전입신고서 Multi-Label) 3회차": {
+        "model_path": r"..\document_forms_source\checkpoints\optuna_trial_8_best_val_loss_0.00836.pth",
         "type": "multilabel",
         "num_classes": 14,
         "labels": LABEL_COLS,
