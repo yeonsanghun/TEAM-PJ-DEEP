@@ -13,6 +13,7 @@ from PIL import Image
 from pytorch_grad_cam import GradCAMPlusPlus
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+from sklearn.metrics import f1_score
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import models, transforms
@@ -292,15 +293,47 @@ model.eval()
 
 correct = 0
 total = 0
+subset_correct = 0
+subset_total = 0
+label_correct = torch.zeros(NUM_CLASSES)
+all_preds = []
+all_labels = []
+
 with torch.no_grad():
     for imgs, labels in test_loader:
         preds = model(imgs.to(device))
         pred_binary = (torch.sigmoid(preds) > 0.5).float()
-        correct += (pred_binary == labels.to(device)).sum().item()
+        labels_dev = labels.to(device)
+
+        correct += (pred_binary == labels_dev).sum().item()
         total += labels.numel()
 
-acc = correct / total
-print(f"Test Element-wise Accuracy: {acc:.4f}")
+        # Subset Accuracy: 14개 레이블이 모두 일치해야 정답
+        subset_correct += (pred_binary == labels_dev).all(dim=1).sum().item()
+        subset_total += labels.shape[0]
+
+        # Label-wise Accuracy
+        label_correct += (pred_binary == labels_dev).sum(dim=0).cpu()
+
+        all_preds.append(pred_binary.cpu())
+        all_labels.append(labels)
+
+all_preds = torch.cat(all_preds).numpy()    # (N, 14)
+all_labels = torch.cat(all_labels).numpy()  # (N, 14)
+
+acc        = correct / total
+subset_acc = subset_correct / subset_total
+label_acc  = label_correct / subset_total
+f1_micro   = f1_score(all_labels, all_preds, average="micro", zero_division=0)
+f1_macro   = f1_score(all_labels, all_preds, average="macro", zero_division=0)
+
+print(f"Test Element-wise Accuracy : {acc:.4f}")
+print(f"Test Subset Accuracy       : {subset_acc:.4f}  ({subset_correct}/{subset_total})")
+print(f"Test F1 Micro              : {f1_micro:.4f}")
+print(f"Test F1 Macro              : {f1_macro:.4f}")
+print("\nLabel-wise Accuracy:")
+for col, la in zip(LABEL_COLS, label_acc):
+    print(f"  {col:30s}: {la:.4f}")
 
 
 # =====================================================================
