@@ -37,3 +37,7 @@ Network URL: http://172.16.20.248:8501
 linux
 ../.venv/bin/streamlit run model_efficiNetB4.py --server.port 8501
 
+
+convNext
+../.venv/bin/tensorboard --logdir=runs
+http://localhost:6006/

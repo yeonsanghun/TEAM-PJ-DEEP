@@ -1,5 +1,7 @@
 import os
 
+# 한글 폰트 설정 (Linux NanumGothic) — import 직후 최우선 적용
+import matplotlib.font_manager as _fm
 import matplotlib.pyplot as plt
 import numpy as np
 import optuna
@@ -11,19 +13,21 @@ from PIL import Image
 from pytorch_grad_cam import GradCAMPlusPlus
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
+from sklearn.metrics import f1_score
 from torch.utils.data import DataLoader, Dataset
+from torch.utils.tensorboard import SummaryWriter
 from torchvision import models, transforms
 from tqdm import tqdm
 
-# 한글 폰트 설정 (Windows 맑은 고딕) — import 직후 최우선 적용
-plt.rcParams["font.family"] = "Malgun Gothic"
+_fm._load_fontmanager(try_read_cache=False)  # 폰트 캐시 강제 갱신
+plt.rcParams["font.family"] = "NanumGothic"
 plt.rcParams["axes.unicode_minus"] = False  # 마이너스 기호 깨짐 방지
 
 # =====================================================================
 # Config
 # =====================================================================
 NUM_CLASSES = 14
-EPOCHS = 20
+EPOCHS = 30
 OPTUNA_EPOCHS = 5
 N_TRIALS = 20
 PATIENCE = 3
@@ -53,7 +57,7 @@ LABEL_COLS = [
     "신청인_서명도장",
 ]
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cuda:1" if torch.cuda.is_available() else "cpu"
 
 # =====================================================================
 # Phase 1 — Transform 정의
@@ -128,7 +132,7 @@ def build_model():
 # =====================================================================
 # Phase 3 — Optuna 하이퍼파라미터 최적화
 # =====================================================================
-train_dataset = MultiLabelDataset(TRAIN_CSV, TRAIN_IMG_DIR, transfo5rm_train)
+train_dataset = MultiLabelDataset(TRAIN_CSV, TRAIN_IMG_DIR, transform_train)
 val_dataset = MultiLabelDataset(VAL_CSV, VAL_IMG_DIR, transform_val)
 
 
@@ -193,6 +197,8 @@ criterion = nn.BCEWithLogitsLoss()
 
 best_val_loss = float("inf")
 early_stop_count = 0
+writer = SummaryWriter()
+global_step = 0
 
 # -----------------------------------------------------------------------
 # [tqdm] 학습 진행 표시
@@ -235,19 +241,32 @@ for epoch in range(1, EPOCHS + 1):
         optimizer.zero_grad()
         preds = model(imgs.to(device))
         loss = criterion(preds, labels.to(device))
+        # TensorBoard — 배치별 학습 손실 기록
+        writer.add_scalar("Loss/train", loss.item(), global_step)
+        global_step += 1
         loss.backward()
         optimizer.step()
         pbar.set_postfix(loss=f"{loss.item():.4f}")
 
     model.eval()
     val_loss = 0.0
+    val_correct = 0
+    val_total = 0
     with torch.no_grad():
         for imgs, labels in val_loader:
             preds = model(imgs.to(device))
             val_loss += criterion(preds, labels.to(device)).item()
+            pred_binary = (torch.sigmoid(preds) > 0.5).float()
+            val_correct += (pred_binary == labels.to(device)).sum().item()
+            val_total += labels.numel()
 
     total_val_loss = val_loss / len(val_loader)
-    print(f"Epoch [{epoch}/{EPOCHS}]  val_loss: {total_val_loss:.4f}")
+    val_acc = val_correct / val_total
+    # TensorBoard — 에포크별 검증 손실 및 정확도 기록
+    writer.add_scalar("Loss/val", total_val_loss, epoch)
+    writer.add_scalar("Acc/val", val_acc, epoch)
+    writer.flush()
+    print(f"Epoch [{epoch}/{EPOCHS}]  val_loss: {total_val_loss:.4f}  val_acc: {val_acc:.4f}")
 
     if total_val_loss < best_val_loss:
         best_val_loss = total_val_loss
@@ -259,6 +278,8 @@ for epoch in range(1, EPOCHS + 1):
         if early_stop_count >= PATIENCE:
             print(f"Early stopping triggered at epoch {epoch}")
             break
+
+writer.close()
 
 
 # =====================================================================
@@ -272,15 +293,47 @@ model.eval()
 
 correct = 0
 total = 0
+subset_correct = 0
+subset_total = 0
+label_correct = torch.zeros(NUM_CLASSES)
+all_preds = []
+all_labels = []
+
 with torch.no_grad():
     for imgs, labels in test_loader:
         preds = model(imgs.to(device))
         pred_binary = (torch.sigmoid(preds) > 0.5).float()
-        correct += (pred_binary == labels.to(device)).sum().item()
+        labels_dev = labels.to(device)
+
+        correct += (pred_binary == labels_dev).sum().item()
         total += labels.numel()
 
-acc = correct / total
-print(f"Test Element-wise Accuracy: {acc:.4f}")
+        # Subset Accuracy: 14개 레이블이 모두 일치해야 정답
+        subset_correct += (pred_binary == labels_dev).all(dim=1).sum().item()
+        subset_total += labels.shape[0]
+
+        # Label-wise Accuracy
+        label_correct += (pred_binary == labels_dev).sum(dim=0).cpu()
+
+        all_preds.append(pred_binary.cpu())
+        all_labels.append(labels)
+
+all_preds = torch.cat(all_preds).numpy()    # (N, 14)
+all_labels = torch.cat(all_labels).numpy()  # (N, 14)
+
+acc        = correct / total
+subset_acc = subset_correct / subset_total
+label_acc  = label_correct / subset_total
+f1_micro   = f1_score(all_labels, all_preds, average="micro", zero_division=0)
+f1_macro   = f1_score(all_labels, all_preds, average="macro", zero_division=0)
+
+print(f"Test Element-wise Accuracy : {acc:.4f}")
+print(f"Test Subset Accuracy       : {subset_acc:.4f}  ({subset_correct}/{subset_total})")
+print(f"Test F1 Micro              : {f1_micro:.4f}")
+print(f"Test F1 Macro              : {f1_macro:.4f}")
+print("\nLabel-wise Accuracy:")
+for col, la in zip(LABEL_COLS, label_acc):
+    print(f"  {col:30s}: {la:.4f}")
 
 
 # =====================================================================

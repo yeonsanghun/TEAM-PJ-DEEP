@@ -1,5 +1,7 @@
 import os
 
+# 한글 폰트 설정 (Linux NanumGothic) — import 직후 최우선 적용
+import matplotlib.font_manager as _fm
 import matplotlib.pyplot as plt
 import numpy as np
 import optuna
@@ -12,11 +14,12 @@ from pytorch_grad_cam import GradCAMPlusPlus
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
 from torch.utils.data import DataLoader, Dataset
+from torch.utils.tensorboard import SummaryWriter
 from torchvision import models, transforms
 from tqdm import tqdm
 
-# 한글 폰트 설정 (Windows 맑은 고딕) — import 직후 최우선 적용
-plt.rcParams["font.family"] = "Malgun Gothic"
+_fm._load_fontmanager(try_read_cache=False)  # 폰트 캐시 강제 갱신
+plt.rcParams["font.family"] = "NanumGothic"
 plt.rcParams["axes.unicode_minus"] = False  # 마이너스 기호 깨짐 방지
 
 # =====================================================================
@@ -53,8 +56,8 @@ LABEL_COLS = [
     "신청인_서명도장",
 ]
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
+print('device:' + device)
 # =====================================================================
 # Phase 1 — Transform 정의
 # =====================================================================
@@ -219,6 +222,8 @@ criterion = nn.BCEWithLogitsLoss()
 
 best_val_loss = float("inf")
 early_stop_count = 0
+writer = SummaryWriter()
+global_step = 0
 
 # -----------------------------------------------------------------------
 # [Early Stopping] patience = 3 의 동작 방식
@@ -238,19 +243,32 @@ for epoch in range(1, EPOCHS + 1):
         optimizer.zero_grad()
         preds = model(imgs.to(device))
         loss = criterion(preds, labels.to(device))
+        # TensorBoard — 배치별 학습 손실 기록
+        writer.add_scalar("Loss/train", loss.item(), global_step)
+        global_step += 1
         loss.backward()
         optimizer.step()
         pbar.set_postfix(loss=f"{loss.item():.4f}")
 
     model.eval()
     val_loss = 0.0
+    val_correct = 0
+    val_total = 0
     with torch.no_grad():
         for imgs, labels in val_loader:
             preds = model(imgs.to(device))
             val_loss += criterion(preds, labels.to(device)).item()
+            pred_binary = (torch.sigmoid(preds) > 0.5).float()
+            val_correct += (pred_binary == labels.to(device)).sum().item()
+            val_total += labels.numel()
 
     total_val_loss = val_loss / len(val_loader)
-    print(f"Epoch [{epoch}/{EPOCHS}]  val_loss: {total_val_loss:.4f}")
+    val_acc = val_correct / val_total
+    # TensorBoard — 에포크별 검증 손실 및 정확도 기록
+    writer.add_scalar("Loss/val", total_val_loss, epoch)
+    writer.add_scalar("Acc/val", val_acc, epoch)
+    writer.flush()
+    print(f"Epoch [{epoch}/{EPOCHS}]  val_loss: {total_val_loss:.4f}  val_acc: {val_acc:.4f}")
 
     if total_val_loss < best_val_loss:
         best_val_loss = total_val_loss
@@ -262,6 +280,8 @@ for epoch in range(1, EPOCHS + 1):
         if early_stop_count >= PATIENCE:
             print(f"Early stopping triggered at epoch {epoch}")
             break
+
+writer.close()
 
 
 # =====================================================================

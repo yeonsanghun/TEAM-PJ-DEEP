@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
-from PIL import Image
+from PIL import Image, ImageOps
 from pytorch_grad_cam import GradCAMPlusPlus
 from pytorch_grad_cam.utils.image import show_cam_on_image
 from pytorch_grad_cam.utils.model_targets import ClassifierOutputTarget
@@ -13,8 +13,21 @@ import streamlit as st
 # =====================================================================
 # 모델별 설정 레지스트리
 # =====================================================================
-LABEL_COLS = [
+
+# =====================================================================
+# 모델별 LABEL 설정
+# =====================================================================
+
+# 1회차 라벨 순서
+LABEL_COLS_V1 = [
     "전입자_성명", "전입자_주민등록번호", "전입자_연락처", "전입자_서명도장",
+    "전_시도", "전_시군구", "현_세대주성명", "현_연락처", "현_서명도장",
+    "현_주소", "전입사유_체크", "우편물서비스_동의체크", "신청인_성명", "신청인_서명도장",
+]
+
+# 2회차 / 3회차 라벨 순서
+LABEL_COLS_V2 = [
+    "전입자_성명", "전입자_서명도장", "전입자_주민등록번호", "전입자_연락처",
     "전_시도", "전_시군구", "현_세대주성명", "현_연락처", "현_서명도장",
     "현_주소", "전입사유_체크", "우편물서비스_동의체크", "신청인_성명", "신청인_서명도장",
 ]
@@ -24,29 +37,28 @@ MODEL_REGISTRY = {
         "model_path": r"..\document_forms_source\checkpoints\best_model-data2-1000_20260309_Best_Val_Loss_0.1439.pth",
         "type": "multilabel",
         "num_classes": 14,
-        "labels": LABEL_COLS,
+        "labels": LABEL_COLS_V1,   # ✅ 1회차 라벨
         "threshold": 0.5,
-        # 1회차: ImageNet 기준 정규화
         "mean": [0.485, 0.456, 0.406],
         "std": [0.229, 0.224, 0.225],
     },
+
     "ConvNeXt-S (전입신고서 Multi-Label) 2회차": {
         "model_path": r"..\document_forms_source\checkpoints\best_model-data2-4000-unfreezed_20260309-val_loss_0.0087.pth",
         "type": "multilabel",
         "num_classes": 14,
-        "labels": LABEL_COLS,
+        "labels": LABEL_COLS_V2,   # ✅ 2회차 라벨
         "threshold": 0.5,
-        # 2회차: 커스텀 정규화
         "mean": [0.9367, 0.9364, 0.9358],
         "std": [0.0957, 0.0964, 0.0963],
     },
-    "ConvNeXt-S (전입신고서 Multi-Label) 3회차(작성해야함)": {
-        "model_path": r"..\document_forms_source\checkpoints\best_model-data2-4000-unfreezed_20260309-val_loss_0.0087.pth",
+
+    "ConvNeXt-S (전입신고서 Multi-Label) 3회차": {
+        "model_path": r"..\document_forms_source\checkpoints\optuna_final_trial_4_best_0.00824.pth",
         "type": "multilabel",
         "num_classes": 14,
-        "labels": LABEL_COLS,
+        "labels": LABEL_COLS_V2,   # ✅ 3회차도 동일
         "threshold": 0.5,
-        # 3회차: 커스텀 정규화
         "mean": [0.9367, 0.9364, 0.9358],
         "std": [0.0957, 0.0964, 0.0963],
     },
@@ -65,7 +77,7 @@ def get_transform(config: dict):
 # =====================================================================
 # 모델 로드
 # =====================================================================
-@st.cache_resource
+@st.cache_resource(hash_funcs={torch.nn.Module: lambda _: None})
 def load_convnext_small(model_path: str, num_classes: int):
     model = models.convnext_small(weights=None)
     model.classifier[2] = nn.Linear(768, num_classes)
@@ -84,7 +96,7 @@ def compute_gradcam_pp(model, image: Image.Image, transform) -> np.ndarray:
     pred = model(input_tensor)
     pred_class = int(torch.sigmoid(pred).argmax().item())
 
-    cam_pp = GradCAMPlusPlus(model=model, target_layers=[model.features[-1]])
+    cam_pp = GradCAMPlusPlus(model=model, target_layers=[model.features[-1][-1]])
     gradcam_map = cam_pp(
         input_tensor=input_tensor,
         targets=[ClassifierOutputTarget(pred_class)],
@@ -125,10 +137,12 @@ if not os.path.exists(model_abs):
 # 현재 모델의 전처리(transform) 생성
 current_transform = get_transform(config)
 
-uploaded_file = st.file_uploader("테스트 이미지를 업로드하세요", type=["jpg", "jpeg", "png"])
+uploaded_file = st.file_uploader("테스트 이미지를 업로드하세요", type=["jpg","jpeg","png","webp","bmp","tiff"])
 
 if uploaded_file is not None:
-    image = Image.open(uploaded_file).convert("RGB")
+    image = Image.open(uploaded_file)
+    image = ImageOps.exif_transpose(image)  # EXIF 회전 적용
+    image = image.convert("RGB")
     col1, col2 = st.columns([1, 2])
 
     with col2:

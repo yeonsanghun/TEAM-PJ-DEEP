@@ -354,6 +354,38 @@ print(study.best_trial.params)
 - Optuna에서 찾은 `batch_size`, `lr`로 DataLoader 재생성
 - `tqdm` 진행 표시
 - Early Stopping (patience = 3): val_loss 개선 시 `best_model_efficiB4.pth` 저장
+- **TensorBoard 기록** (`SummaryWriter` 사용)
+
+**TensorBoard 기록 항목**
+
+| 태그 | 기록 시점 | x축 기준 | 참조 노트북 대응 |
+| ------------- | --------- | ------------------------- | --------------------------------- |
+| `Loss/train`  | 배치마다  | `global_step` (배치 누적) | `writer.add_scalar("Loss/train")` |
+| `Loss/val`    | 에포크마다 | `epoch`                  | `writer_ft.add_scalar(...)` |
+| `Acc/val`     | 에포크마다 | `epoch`                  | element-wise accuracy |
+
+```python
+writer = SummaryWriter()   # runs/<타임스탬프>/ 에 자동 저장
+global_step = 0
+
+# 배치 루프 내
+writer.add_scalar("Loss/train", loss.item(), global_step)
+global_step += 1
+
+# 에포크 끝 — val loss/acc 동시 기록
+writer.add_scalar("Loss/val", total_val_loss, epoch)
+writer.add_scalar("Acc/val", val_acc, epoch)
+writer.flush()   # 매 에포크마다 디스크에 즉시 기록
+
+# 학습 완료 후
+writer.close()
+```
+
+> **확인 방법**
+> ```bash
+> tensorboard --logdir=runs
+> # → 브라우저에서 http://localhost:6006 접속 → Scalars 탭
+> ```
 
 ```python
 # =====================================================================
@@ -407,6 +439,7 @@ print(study.best_trial.params)
 | 손실함수                | BCEWithLogitsLoss            | Multi-label 이진 분류   |
 | Early Stopping patience | 3                            | 과적합 방지             |
 | GradCAM 대상            | test셋 첫 번째 이미지 (자동) | 재현성 보장             |
+| TensorBoard 기록        | `Loss/train`(배치), `Loss/val`+`Acc/val`(에포크) | 학습 곡선·과적합 여부 실시간 모니터링 |
 
 ---
 
